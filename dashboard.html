@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PSIRT Watch — Advisory Release Monitor</title>
+<style>
+  :root{
+    --bg:#0B0E14;
+    --panel:#121722;
+    --raised:#1A2130;
+    --line:#232C3D;
+    --line-soft:#1B2231;
+    --ink:#E4E9F2;
+    --muted:#8A97AD;
+    --faint:#5A6579;
+    --live:#35E0C8;
+    --crit:#F0454B;
+    --high:#FF8A3D;
+    --med:#F5C542;
+    --info:#7C8AA5;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono","SF Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.4;
+    -webkit-font-smoothing:antialiased;
+    padding:22px clamp(14px,3vw,34px) 60px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+
+  /* ---- header ---- */
+  header{
+    display:flex;align-items:flex-end;justify-content:space-between;
+    gap:16px;flex-wrap:wrap;
+    padding-bottom:16px;border-bottom:1px solid var(--line);
+  }
+  .brand h1{
+    font-size:11px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;
+    margin:0 0 4px;color:var(--muted);
+  }
+  .brand .sub{
+    font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.01em;
+    color:var(--ink);
+  }
+  .status{display:flex;align-items:center;gap:18px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .live{display:flex;align-items:center;gap:8px;color:var(--live);letter-spacing:.14em;font-weight:600;font-size:11px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(53,224,200,.6);animation:pulse 2.4s ease-out infinite}
+  .live.stale{color:var(--faint)} .live.stale .dot{background:var(--faint);animation:none;box-shadow:none}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(53,224,200,.55)}70%{box-shadow:0 0 0 9px rgba(53,224,200,0)}100%{box-shadow:0 0 0 0 rgba(53,224,200,0)}}
+  .updated span{color:var(--ink)}
+  .mode-tag{
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+    padding:3px 8px;border:1px solid var(--line);border-radius:3px;color:var(--faint);
+  }
+  .mode-tag.sample{color:var(--med);border-color:rgba(245,197,66,.35)}
+
+  /* ---- summary tiles ---- */
+  .summary{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0 6px;align-items:stretch}
+  .tile{
+    flex:1 1 130px;min-width:120px;background:var(--panel);border:1px solid var(--line);
+    border-radius:6px;padding:12px 14px 11px;position:relative;overflow:hidden;
+  }
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sev)}
+  .tile .n{font-family:var(--mono);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1;color:var(--ink)}
+  .tile .k{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+  .tile.crit{--sev:var(--crit)} .tile.high{--sev:var(--high)} .tile.med{--sev:var(--med)} .tile.info{--sev:var(--info)}
+  .tile.total{--sev:var(--live)}
+  .tile.total .newflag{
+    font-family:var(--mono);font-size:11px;color:var(--live);margin-top:6px;
+    opacity:0;transition:opacity .3s;
+  }
+  .tile.total .newflag.on{opacity:1}
+
+  /* ---- timeline ---- */
+  .timeline-wrap{margin:16px 0 4px}
+  .timeline-head{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+  .timeline{display:flex;align-items:flex-end;gap:3px;height:44px;padding:0 1px;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .tl-bar{flex:1;min-width:2px;background:linear-gradient(to top,var(--line),#2f3b52);border-radius:2px 2px 0 0;transition:height .4s ease}
+  .tl-bar.hot{background:linear-gradient(to top,var(--high),var(--crit))}
+
+  /* ---- controls ---- */
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0 14px}
+  .search{
+    flex:1 1 240px;display:flex;align-items:center;gap:8px;background:var(--panel);
+    border:1px solid var(--line);border-radius:6px;padding:0 12px;height:38px;
+  }
+  .search svg{flex:none;stroke:var(--faint)}
+  .search input{
+    flex:1;background:none;border:none;outline:none;color:var(--ink);
+    font-family:var(--mono);font-size:13px;
+  }
+  .search input::placeholder{color:var(--faint)}
+  .filters{display:flex;gap:6px;flex-wrap:wrap}
+  .filters button{
+    background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:0 12px;height:38px;border-radius:6px;cursor:pointer;transition:.15s;
+  }
+  .filters button:hover{border-color:var(--faint);color:var(--ink)}
+  .filters button:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+  .filters button[aria-pressed="true"]{background:var(--raised);color:var(--ink);border-color:var(--f-sev,var(--live))}
+  .filters button[data-sev="Critical"]{--f-sev:var(--crit)}
+  .filters button[data-sev="High"]{--f-sev:var(--high)}
+  .filters button[data-sev="Medium"]{--f-sev:var(--med)}
+  .filters button[data-sev="Informational"]{--f-sev:var(--info)}
+
+  /* ---- feed ---- */
+  .feed{display:flex;flex-direction:column;gap:8px}
+  .row{
+    display:grid;grid-template-columns:76px 1fr auto;gap:16px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--sev);
+    border-radius:6px;padding:13px 16px;position:relative;
+  }
+  .row.crit{--sev:var(--crit)} .row.high{--sev:var(--high)} .row.med{--sev:var(--med)} .row.info{--sev:var(--info)}
+  .sev-chip{
+    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--sev);
+  }
+  .sev-chip .score{display:block;font-size:17px;font-weight:600;letter-spacing:0;margin-top:3px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .main{min-width:0}
+  .title{font-size:14px;font-weight:500;color:var(--ink);margin:0 0 5px;line-height:1.35}
+  .title a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}
+  .title a:hover{border-color:var(--faint)}
+  .meta{display:flex;flex-wrap:wrap;gap:5px 14px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .meta .id{color:var(--faint)}
+  .cves{display:flex;flex-wrap:wrap;gap:5px}
+  .cve{background:var(--raised);border:1px solid var(--line);border-radius:3px;padding:1px 6px;color:var(--muted)}
+  .products{color:var(--muted)}
+  .when{text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+  .when .ago{display:block;color:var(--faint);margin-top:3px;font-size:10px}
+  .badge-new{
+    position:absolute;top:-8px;left:64px;font-family:var(--mono);font-size:9px;font-weight:700;
+    letter-spacing:.16em;background:var(--live);color:#04120f;padding:2px 7px;border-radius:3px;
+  }
+  .row.is-new{animation:land .6s ease}
+  @keyframes land{0%{background:rgba(53,224,200,.10);border-left-color:var(--live)}100%{background:var(--panel)}}
+  .ack-btn{
+    display:inline-block;margin-top:8px;font-family:var(--mono);font-size:10px;
+    letter-spacing:.1em;text-transform:uppercase;background:var(--raised);
+    border:1px solid var(--line);color:var(--muted);border-radius:4px;
+    padding:4px 9px;cursor:pointer;transition:.15s;
+  }
+  .ack-btn:hover{border-color:var(--live);color:var(--live)}
+  .ack-btn:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+  .row.acked{opacity:.45}
+  .row.acked .ack-btn{border-color:var(--faint);color:var(--faint)}
+  .row.acked .ack-btn:hover{border-color:var(--live);color:var(--live)}
+
+  .ack-controls{display:flex;gap:6px;margin-left:auto}
+  .ack-ctl{
+    background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:0 12px;height:38px;border-radius:6px;cursor:pointer;transition:.15s;
+  }
+  .ack-ctl:hover{border-color:var(--faint);color:var(--ink)}
+  .ack-ctl:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+  .ack-ctl[aria-pressed="true"]{background:var(--raised);color:var(--ink);border-color:var(--live)}
+  .ack-ctl .cnt{color:var(--faint)}
+
+  .empty{
+    text-align:center;padding:64px 20px;border:1px dashed var(--line);border-radius:8px;
+    color:var(--muted);
+  }
+  .empty .big{font-family:var(--mono);font-size:15px;color:var(--ink);margin-bottom:8px;letter-spacing:.02em}
+  .empty .pulse{display:inline-flex;align-items:center;gap:8px;color:var(--live);font-size:12px;letter-spacing:.14em;margin-top:14px;text-transform:uppercase}
+
+  footer{margin-top:26px;font-family:var(--mono);font-size:11px;color:var(--faint);text-align:center}
+  footer code{color:var(--muted)}
+
+  @media (max-width:620px){
+    .row{grid-template-columns:60px 1fr;gap:12px}
+    .when{grid-column:2;text-align:left;margin-top:4px}
+    .badge-new{left:52px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .dot{animation:none}.row.is-new{animation:none}.tl-bar{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>PSIRT Watch</h1>
+      <div class="sub">Cisco Advisory Release Monitor</div>
+    </div>
+    <div class="status">
+      <span class="mode-tag" id="modeTag">live</span>
+      <span class="updated">updated <span id="updated">—</span></span>
+      <span class="live" id="liveInd"><span class="dot"></span>LIVE</span>
+    </div>
+  </header>
+
+  <section class="summary" id="summary">
+    <div class="tile crit"><div class="n" id="cCrit">0</div><div class="k">Critical</div></div>
+    <div class="tile high"><div class="n" id="cHigh">0</div><div class="k">High</div></div>
+    <div class="tile med"><div class="n" id="cMed">0</div><div class="k">Medium</div></div>
+    <div class="tile info"><div class="n" id="cInfo">0</div><div class="k">Informational</div></div>
+    <div class="tile total"><div class="n" id="cTotal">0</div><div class="k">Outstanding</div><div class="newflag" id="newFlag">+0 since you opened</div></div>
+  </section>
+
+  <div class="timeline-wrap">
+    <div class="timeline-head"><span>Release timeline</span><span id="tlSpan">last 24h</span></div>
+    <div class="timeline" id="timeline" aria-hidden="true"></div>
+  </div>
+
+  <div class="controls">
+    <label class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="search" type="text" placeholder="filter by product, CVE, advisory id, keyword…" autocomplete="off">
+    </label>
+    <div class="filters" id="filters" role="group" aria-label="Severity filter">
+      <button data-sev="all" aria-pressed="true">All</button>
+      <button data-sev="Critical" aria-pressed="false">Critical</button>
+      <button data-sev="High" aria-pressed="false">High</button>
+      <button data-sev="Medium" aria-pressed="false">Medium</button>
+      <button data-sev="Informational" aria-pressed="false">Info</button>
+    </div>
+    <div class="ack-controls">
+      <button id="ackAll" class="ack-ctl" type="button">Ack all shown</button>
+      <button id="toggleAcked" class="ack-ctl" type="button" aria-pressed="false"><span class="lbl">Show acked</span> <span class="cnt" id="ackedCount">0</span></button>
+    </div>
+  </div>
+
+  <div class="feed" id="feed" aria-live="polite"></div>
+
+  <footer>
+    reads <code>./advisories.json</code> · refresh every <code id="ivLabel">30s</code> · populate with <code>psirt_fetch.py</code>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ---- config ----
+  var DATA_URL = "./advisories.json";
+  var REFRESH_MS = 30000;
+  var TL_BUCKETS = 24;            // timeline buckets (hours)
+  document.getElementById("ivLabel").textContent = (REFRESH_MS/1000)+"s";
+
+  // ---- sample data: FICTIONAL placeholders shown only if advisories.json isn't
+  // reachable (e.g. preview). Not real Cisco advisories — ids, CVEs and product
+  // names are made up so this can never be mistaken for genuine advisory data.
+  var SAMPLE = { generated:new Date().toISOString(), sample:true, advisories:[
+    {id:"SAMPLE-0001",title:"[SAMPLE DATA] Example Access Gateway Remote Code Execution Vulnerability",sir:"Critical",cvss:"10.0",cves:["CVE-0000-00001","CVE-0000-00002"],products:["Example Access Gateway","Example Identity Connector"],firstPublished:mins(4),url:"#"},
+    {id:"SAMPLE-0002",title:"[SAMPLE DATA] Example Fabric Controller Arbitrary File Read Vulnerability",sir:"High",cvss:"7.5",cves:["CVE-0000-00003"],products:["Example Fabric Controller"],firstPublished:mins(22),url:"#"},
+    {id:"SAMPLE-0003",title:"[SAMPLE DATA] Third-Party Library Vulnerabilities Affecting Example Products",sir:"High",cvss:"7.5",cves:["CVE-0000-00004","CVE-0000-00005","CVE-0000-00006","CVE-0000-00007"],products:["Example Secure Mail Gateway","Example Secure Web Gateway"],firstPublished:mins(48),url:"#"},
+    {id:"SAMPLE-0004",title:"[SAMPLE DATA] Example Room System Security Hardening Release",sir:"High",cvss:"8.8",cves:["CVE-0000-00008","CVE-0000-00009","CVE-0000-00010"],products:["Example Room System"],firstPublished:mins(95),url:"#"},
+    {id:"SAMPLE-0005",title:"[SAMPLE DATA] Example Access Gateway Path Traversal Vulnerability",sir:"Medium",cvss:"5.5",cves:["CVE-0000-00011"],products:["Example Access Gateway"],firstPublished:mins(140),url:"#"},
+    {id:"SAMPLE-0006",title:"[SAMPLE DATA] Example Firewall Manager Stored Cross-Site Scripting Vulnerability",sir:"Medium",cvss:"6.1",cves:["CVE-0000-00012"],products:["Example Firewall Manager"],firstPublished:mins(310),url:"#"},
+    {id:"SAMPLE-0007",title:"[SAMPLE DATA] Example Auth Proxy Informational Advisory: Logging Note",sir:"Informational",cvss:"—",cves:[],products:["Example Auth Proxy"],firstPublished:mins(520),url:"#"},
+    {id:"SAMPLE-0008",title:"[SAMPLE DATA] Example Security Appliance Denial of Service Vulnerability",sir:"High",cvss:"8.6",cves:["CVE-0000-00013"],products:["Example Security Appliance"],firstPublished:mins(760),url:"#"}
+  ]};
+  function mins(m){return new Date(Date.now()-m*60000).toISOString();}
+
+  var SEV_ORDER={Critical:0,High:1,Medium:2,Informational:3};
+  var SEV_CLASS={Critical:"crit",High:"high",Medium:"med",Informational:"info"};
+  var seen={};            // advisoryId -> true (known before this poll)
+  var firstLoad=true;
+  var newSinceOpen=0;
+  var activeSev="all";
+  var query="";
+
+  // ---- acknowledged ("seen") advisories — persisted per-browser ----
+  var STORE_KEY="psirt_acked_v1";
+  var acked=loadAcked();     // Set of ackKeys ("advisoryId@version")
+  var showAcked=false;
+  function ackKey(a){ return (a.id||"")+"@"+(a.version||""); }
+  function loadAcked(){ try{ var r=localStorage.getItem(STORE_KEY); return r?new Set(JSON.parse(r)):new Set(); }catch(e){ return new Set(); } }
+  function saveAcked(){ try{ localStorage.setItem(STORE_KEY,JSON.stringify(Array.from(acked))); }catch(e){} }
+
+  // ---- ?baseline: on first-ever load, auto-ack everything already published ----
+  // so the panel starts blank and only advisories published AFTER this point show up.
+  // Must only ever run against real fetched data — never against SAMPLE — otherwise
+  // it bakes in sample IDs and every real advisory shows up unacked afterwards.
+  var BASELINE_KEY="psirt_baselined_v1";
+  var wantBaseline=new URLSearchParams(location.search).has("baseline");
+  function baselinedAlready(){ try{ return localStorage.getItem(BASELINE_KEY)==="1"; }catch(e){ return false; } }
+  function markBaselined(){ try{ localStorage.setItem(BASELINE_KEY,"1"); }catch(e){} }
+
+  var el={
+    feed:document.getElementById("feed"),
+    updated:document.getElementById("updated"),
+    live:document.getElementById("liveInd"),
+    mode:document.getElementById("modeTag"),
+    tl:document.getElementById("timeline"),
+    newFlag:document.getElementById("newFlag"),
+    counts:{Critical:document.getElementById("cCrit"),High:document.getElementById("cHigh"),Medium:document.getElementById("cMed"),Informational:document.getElementById("cInfo"),total:document.getElementById("cTotal")}
+  };
+
+  var current=[];  // last rendered dataset
+
+  function fetchData(){
+    fetch(DATA_URL,{cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error("no file"); return r.json(); })
+      .then(function(d){ apply(d,false); })
+      .catch(function(){ apply(SAMPLE,true); });
+  }
+
+  function apply(data,isSample){
+    var list=(data && data.advisories)?data.advisories.slice():[];
+    // normalise + sort newest first
+    list.forEach(function(a){ a._t=Date.parse(a.firstPublished||a.lastUpdated||0)||0; });
+    list.sort(function(x,y){ return y._t-x._t; });
+
+    // baseline against this list only if it's real data and we haven't already
+    if(wantBaseline && !isSample && !baselinedAlready()){
+      list.forEach(function(a){ acked.add(ackKey(a)); });
+      saveAcked();
+      markBaselined();
+    }
+
+    // detect newly-arrived advisories
+    var freshCount=0;
+    list.forEach(function(a){ a._new=!firstLoad && !seen[a.id]; if(a._new) freshCount++; });
+    if(freshCount){ newSinceOpen+=freshCount; }
+
+    current=list;
+    render(list);
+    updateCounts(list);
+    updateTimeline(list);
+    updateAckedCount();
+
+    // mark all as seen for next diff
+    list.forEach(function(a){ seen[a.id]=true; });
+    firstLoad=false;
+
+    // status line
+    var now=new Date();
+    el.updated.textContent=pad(now.getHours())+":"+pad(now.getMinutes())+":"+pad(now.getSeconds());
+    el.live.classList.remove("stale");
+    el.mode.textContent=isSample?"sample data":"live";
+    el.mode.classList.toggle("sample",isSample);
+    if(newSinceOpen>0){ el.newFlag.textContent="+"+newSinceOpen+" since you opened"; el.newFlag.classList.add("on"); }
+  }
+
+  function passesFilter(a){
+    if(!showAcked && acked.has(ackKey(a))) return false;
+    if(activeSev!=="all" && a.sir!==activeSev) return false;
+    if(query){
+      var hay=(a.title+" "+a.id+" "+(a.cves||[]).join(" ")+" "+(a.products||[]).join(" ")).toLowerCase();
+      if(hay.indexOf(query)===-1) return false;
+    }
+    return true;
+  }
+
+  function render(list){
+    var shown=list.filter(passesFilter);
+    if(!shown.length){ el.feed.innerHTML=emptyState(list.length); return; }
+    el.feed.innerHTML=shown.map(rowHTML).join("");
+  }
+
+  function rowHTML(a){
+    var cls=SEV_CLASS[a.sir]||"info";
+    var cves=(a.cves||[]).slice(0,6).map(function(c){return '<span class="cve">'+esc(c)+'</span>';}).join("");
+    var extra=(a.cves&&a.cves.length>6)?'<span class="cve">+'+(a.cves.length-6)+'</span>':"";
+    var prod=(a.products||[]).join(" · ");
+    var link=a.url&&a.url!=="#"?a.url:null;
+    var titleHTML=link?'<a href="'+esc(link)+'" target="_blank" rel="noopener">'+esc(a.title)+'</a>':esc(a.title);
+    var k=ackKey(a), isAck=acked.has(k);
+    return ''+
+    '<article class="row '+cls+(a._new&&!isAck?' is-new':'')+(isAck?' acked':'')+'">'+
+      (a._new&&!isAck?'<span class="badge-new">NEW</span>':'')+
+      '<div class="sev-chip">'+a.sir.slice(0,4).toUpperCase()+'<span class="score">'+esc(a.cvss||"—")+'</span></div>'+
+      '<div class="main">'+
+        '<p class="title">'+titleHTML+'</p>'+
+        '<div class="meta">'+
+          '<span class="id">'+esc(a.id)+'</span>'+
+          (cves?'<span class="cves">'+cves+extra+'</span>':'')+
+          (prod?'<span class="products">'+esc(prod)+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      '<div class="when">'+timeStr(a._t)+'<span class="ago">'+ago(a._t)+'</span>'+
+        '<button class="ack-btn" type="button" data-ack="'+esc(k)+'">'+(isAck?'Acked ✓':'Ack')+'</button>'+
+      '</div>'+
+    '</article>';
+  }
+
+  function emptyState(total){
+    var msg=total?"No advisories match this filter.":"Watching for advisory releases.";
+    var sub=total?"Clear the search or severity filter to see all "+total+".":"Nothing published in the window yet — new advisories will land here the moment the poller sees them.";
+    return '<div class="empty"><div class="big">'+msg+'</div><div>'+sub+'</div>'+
+      (total?'':'<div class="pulse"><span class="dot"></span>Polling every '+(REFRESH_MS/1000)+'s</div>')+'</div>';
+  }
+
+  function updateCounts(list){
+    // tiles show OUTSTANDING work — advisories not yet acknowledged
+    var c={Critical:0,High:0,Medium:0,Informational:0},total=0;
+    list.forEach(function(a){
+      if(acked.has(ackKey(a))) return;
+      if(c[a.sir]!==undefined)c[a.sir]++; total++;
+    });
+    el.counts.Critical.textContent=c.Critical;
+    el.counts.High.textContent=c.High;
+    el.counts.Medium.textContent=c.Medium;
+    el.counts.Informational.textContent=c.Informational;
+    el.counts.total.textContent=total;
+  }
+
+  function updateAckedCount(){
+    var n=current.filter(function(a){ return acked.has(ackKey(a)); }).length;
+    var e=document.getElementById("ackedCount"); if(e)e.textContent=n;
+  }
+
+  function updateTimeline(list){
+    var now=Date.now(), span=TL_BUCKETS*3600000, start=now-span;
+    var buckets=new Array(TL_BUCKETS).fill(0);
+    list.forEach(function(a){
+      if(a._t>=start){ var i=Math.floor((a._t-start)/3600000); if(i>=0&&i<TL_BUCKETS)buckets[i]++; }
+    });
+    var max=Math.max.apply(null,buckets.concat([1]));
+    el.tl.innerHTML=buckets.map(function(v){
+      var h=v?Math.max(12,Math.round(v/max*100)):4;
+      return '<div class="tl-bar'+(v/max>0.6?' hot':'')+'" style="height:'+h+'%" title="'+v+' in this hour"></div>';
+    }).join("");
+  }
+
+  // ---- helpers ----
+  function pad(n){return n<10?"0"+n:""+n;}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(m){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m];});}
+  function timeStr(t){ if(!t)return"—"; var d=new Date(t); return pad(d.getHours())+":"+pad(d.getMinutes()); }
+  function ago(t){
+    if(!t)return""; var s=Math.round((Date.now()-t)/1000);
+    if(s<60)return s+"s ago"; var m=Math.round(s/60); if(m<60)return m+"m ago";
+    var h=Math.round(m/60); if(h<48)return h+"h ago"; return Math.round(h/24)+"d ago";
+  }
+
+  // ---- controls ----
+  document.getElementById("filters").addEventListener("click",function(e){
+    var b=e.target.closest("button"); if(!b)return;
+    activeSev=b.getAttribute("data-sev");
+    this.querySelectorAll("button").forEach(function(x){x.setAttribute("aria-pressed",x===b?"true":"false");});
+    render(current);
+  });
+  document.getElementById("search").addEventListener("input",function(e){
+    query=e.target.value.trim().toLowerCase(); render(current);
+  });
+
+  // ack / un-ack a single advisory (event-delegated on the feed)
+  el.feed.addEventListener("click",function(e){
+    var b=e.target.closest(".ack-btn"); if(!b)return;
+    var k=b.getAttribute("data-ack");
+    if(acked.has(k)) acked.delete(k); else acked.add(k);
+    saveAcked(); render(current); updateCounts(current); updateAckedCount();
+  });
+
+  // show / hide acknowledged advisories
+  document.getElementById("toggleAcked").addEventListener("click",function(){
+    showAcked=!showAcked;
+    this.setAttribute("aria-pressed",showAcked?"true":"false");
+    this.querySelector(".lbl").textContent=showAcked?"Hide acked":"Show acked";
+    render(current);
+  });
+
+  // ack everything currently shown (respects the search + severity filter)
+  document.getElementById("ackAll").addEventListener("click",function(){
+    current.forEach(function(a){ if(passesFilter(a)) acked.add(ackKey(a)); });
+    saveAcked(); render(current); updateCounts(current); updateAckedCount();
+  });
+
+  // ---- go ----
+  fetchData();
+  setInterval(fetchData,REFRESH_MS);
+  // refresh relative "ago" labels without refetching
+  setInterval(function(){ if(current.length)render(current); },60000);
+  // mark live indicator stale if a poll clearly overran (belt & braces)
+  setInterval(function(){ el.live.classList.add("stale"); setTimeout(function(){el.live.classList.remove("stale");},400); },REFRESH_MS+8000);
+})();
+</script>
+</body>
+</html>
