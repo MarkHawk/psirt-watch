@@ -133,6 +133,12 @@
   .cves{display:flex;flex-wrap:wrap;gap:5px}
   .cve{background:var(--raised);border:1px solid var(--line);border-radius:3px;padding:1px 6px;color:var(--muted)}
   .products{color:var(--muted)}
+  .prod-toggle{
+    background:none;border:0;padding:0;margin-left:4px;font:inherit;font-family:var(--mono);
+    color:var(--faint);text-decoration:underline;cursor:pointer;
+  }
+  .prod-toggle:hover{color:var(--live)}
+  .prod-toggle:focus-visible{outline:2px solid var(--live);outline-offset:2px}
   .when{text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
   .when .ago{display:block;color:var(--faint);margin-top:3px;font-size:10px}
   .badge-new{
@@ -194,7 +200,7 @@
     <div class="status">
       <span class="mode-tag" id="modeTag">live</span>
       <span class="updated">updated <span id="updated">—</span></span>
-      <span class="live" id="liveInd"><span class="dot"></span>LIVE</span>
+      <span class="live" id="liveInd"><span class="dot"></span><span id="liveLabel">LIVE</span></span>
     </div>
   </header>
 
@@ -251,7 +257,7 @@
   var SAMPLE = { generated:new Date().toISOString(), sample:true, advisories:[
     {id:"SAMPLE-0001",title:"[SAMPLE DATA] Example Access Gateway Remote Code Execution Vulnerability",sir:"Critical",cvss:"10.0",cves:["CVE-0000-00001","CVE-0000-00002"],products:["Example Access Gateway","Example Identity Connector"],firstPublished:mins(4),url:"#"},
     {id:"SAMPLE-0002",title:"[SAMPLE DATA] Example Fabric Controller Arbitrary File Read Vulnerability",sir:"High",cvss:"7.5",cves:["CVE-0000-00003"],products:["Example Fabric Controller"],firstPublished:mins(22),url:"#"},
-    {id:"SAMPLE-0003",title:"[SAMPLE DATA] Third-Party Library Vulnerabilities Affecting Example Products",sir:"High",cvss:"7.5",cves:["CVE-0000-00004","CVE-0000-00005","CVE-0000-00006","CVE-0000-00007"],products:["Example Secure Mail Gateway","Example Secure Web Gateway"],firstPublished:mins(48),url:"#"},
+    {id:"SAMPLE-0003",title:"[SAMPLE DATA] Third-Party Library Vulnerabilities Affecting Example Products",sir:"High",cvss:"7.5",cves:["CVE-0000-00004","CVE-0000-00005","CVE-0000-00006","CVE-0000-00007"],products:["Example Secure Mail Gateway","Example Secure Web Gateway","Example Access Gateway","Example Fabric Controller","Example Firewall Manager","Example Room System","Example Security Appliance"],firstPublished:mins(48),url:"#"},
     {id:"SAMPLE-0004",title:"[SAMPLE DATA] Example Room System Security Hardening Release",sir:"High",cvss:"8.8",cves:["CVE-0000-00008","CVE-0000-00009","CVE-0000-00010"],products:["Example Room System"],firstPublished:mins(95),url:"#"},
     {id:"SAMPLE-0005",title:"[SAMPLE DATA] Example Access Gateway Path Traversal Vulnerability",sir:"Medium",cvss:"5.5",cves:["CVE-0000-00011"],products:["Example Access Gateway"],firstPublished:mins(140),url:"#"},
     {id:"SAMPLE-0006",title:"[SAMPLE DATA] Example Firewall Manager Stored Cross-Site Scripting Vulnerability",sir:"Medium",cvss:"6.1",cves:["CVE-0000-00012"],products:["Example Firewall Manager"],firstPublished:mins(310),url:"#"},
@@ -262,7 +268,9 @@
 
   var SEV_ORDER={Critical:0,High:1,Medium:2,Informational:3};
   var SEV_CLASS={Critical:"crit",High:"high",Medium:"med",Informational:"info"};
+  var SEV_LABEL={Critical:"CRIT",High:"HIGH",Medium:"MED",Informational:"INFO"};
   var seen={};            // advisoryId -> true (known before this poll)
+  var expandedProducts=new Set();  // ackKey -> product list shown in full, not just first 5
   var firstLoad=true;
   var newSinceOpen=0;
   var activeSev="all";
@@ -289,6 +297,7 @@
     feed:document.getElementById("feed"),
     updated:document.getElementById("updated"),
     live:document.getElementById("liveInd"),
+    liveLabel:document.getElementById("liveLabel"),
     mode:document.getElementById("modeTag"),
     tl:document.getElementById("timeline"),
     newFlag:document.getElementById("newFlag"),
@@ -338,6 +347,7 @@
     el.live.classList.remove("stale");
     el.mode.textContent=isSample?"sample data":"live";
     el.mode.classList.toggle("sample",isSample);
+    el.liveLabel.textContent=isSample?"DEMO":"LIVE";
     if(newSinceOpen>0){ el.newFlag.textContent="+"+newSinceOpen+" since you opened"; el.newFlag.classList.add("on"); }
   }
 
@@ -357,24 +367,38 @@
     el.feed.innerHTML=shown.map(rowHTML).join("");
   }
 
+  var PRODUCTS_SHOWN=5;
+  function productsHTML(a){
+    var products=a.products||[];
+    if(!products.length) return "";
+    var k=ackKey(a);
+    var expanded=expandedProducts.has(k);
+    var extra=products.length-PRODUCTS_SHOWN;
+    var list=expanded?products:products.slice(0,PRODUCTS_SHOWN);
+    var toggle=extra>0
+      ?' <button class="prod-toggle" type="button" data-prod-toggle="'+esc(k)+'">'+(expanded?"Show less":"+"+extra+" more")+'</button>'
+      :"";
+    return '<span class="products">'+esc(list.join(" · "))+toggle+'</span>';
+  }
+
   function rowHTML(a){
     var cls=SEV_CLASS[a.sir]||"info";
     var cves=(a.cves||[]).slice(0,6).map(function(c){return '<span class="cve">'+esc(c)+'</span>';}).join("");
     var extra=(a.cves&&a.cves.length>6)?'<span class="cve">+'+(a.cves.length-6)+'</span>':"";
-    var prod=(a.products||[]).join(" · ");
+    var prod=productsHTML(a);
     var link=a.url&&a.url!=="#"?a.url:null;
     var titleHTML=link?'<a href="'+esc(link)+'" target="_blank" rel="noopener">'+esc(a.title)+'</a>':esc(a.title);
     var k=ackKey(a), isAck=acked.has(k);
     return ''+
     '<article class="row '+cls+(a._new&&!isAck?' is-new':'')+(isAck?' acked':'')+'">'+
       (a._new&&!isAck?'<span class="badge-new">NEW</span>':'')+
-      '<div class="sev-chip">'+a.sir.slice(0,4).toUpperCase()+'<span class="score">'+esc(a.cvss||"—")+'</span></div>'+
+      '<div class="sev-chip">'+(SEV_LABEL[a.sir]||a.sir.slice(0,4).toUpperCase())+'<span class="score">'+esc(a.cvss||"—")+'</span></div>'+
       '<div class="main">'+
         '<p class="title">'+titleHTML+'</p>'+
         '<div class="meta">'+
           '<span class="id">'+esc(a.id)+'</span>'+
           (cves?'<span class="cves">'+cves+extra+'</span>':'')+
-          (prod?'<span class="products">'+esc(prod)+'</span>':'')+
+          prod+
         '</div>'+
       '</div>'+
       '<div class="when">'+timeStr(a._t)+'<span class="ago">'+ago(a._t)+'</span>'+
@@ -449,6 +473,14 @@
     var k=b.getAttribute("data-ack");
     if(acked.has(k)) acked.delete(k); else acked.add(k);
     saveAcked(); render(current); updateCounts(current); updateAckedCount();
+  });
+
+  // expand / collapse a row's full product list (event-delegated on the feed)
+  el.feed.addEventListener("click",function(e){
+    var b=e.target.closest(".prod-toggle"); if(!b)return;
+    var k=b.getAttribute("data-prod-toggle");
+    if(expandedProducts.has(k)) expandedProducts.delete(k); else expandedProducts.add(k);
+    render(current);
   });
 
   // show / hide acknowledged advisories
