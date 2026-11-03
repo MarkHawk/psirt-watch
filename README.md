@@ -1,4 +1,4 @@
-# PSIRT Watch - Cisco advisory release monitor
+# PSIRT Watch: Cisco advisory release monitor
 
 Keeping on top of vendor security advisories is routine but important operational
 work: missing a critical advisory means finding out about an exposed system the
