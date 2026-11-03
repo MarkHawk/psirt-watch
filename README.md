@@ -7,7 +7,8 @@ it can't find an `advisories.json`, it shows fictional sample advisories
 "SAMPLE DATA" tag and a "DEMO" label, so you can try every feature.
 
 ```bash
-git clone <repo-url> psirt-watch && cd psirt-watch
+git clone https://github.com/MarkHawk/psirt-watch
+cd psirt-watch
 python3 -m http.server 8080
 # open http://localhost:8080/dashboard.html
 ```
