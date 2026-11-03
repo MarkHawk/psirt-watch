@@ -1,5 +1,21 @@
 # PSIRT Watch: Cisco advisory release monitor
 
+## Try it in 1 minute
+No Cisco API credentials needed. The dashboard has a built-in demo mode: when
+it can't find an `advisories.json`, it shows fictional sample advisories
+(IDs like `SAMPLE-0001`, CVEs like `CVE-0000-00001`) with a yellow
+"SAMPLE DATA" tag and a "DEMO" label, so you can try every feature.
+
+```bash
+git clone <repo-url> psirt-watch && cd psirt-watch
+python3 -m http.server 8080
+# open http://localhost:8080/dashboard.html
+```
+
+Try the search box, the severity filters, **Ack** / **Show acked** and the
+release timeline. Python 3's standard library is all you need: no venv, no
+`pip install`. To see real advisories, follow the steps below.
+
 Keeping on top of vendor security advisories is routine but important operational
 work: missing a critical advisory means finding out about an exposed system the
 hard way. This project automates that watch, polling Cisco's public openVuln API,
